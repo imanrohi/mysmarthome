@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MY SMARTHOME - Griya Melati Mas</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="login-page">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>MY SMARTHOME</h1>
+                <p>Griya Melati Mas Blok D3 no 21, Kota Depok</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="Masukkan username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Masukkan password" required>
+                </div>
+                <button type="submit" class="login-btn">Login</button>
+                <div class="error-message" id="error-message">Username atau password salah!</div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Page -->
+    <div id="main-page">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <h1>MY SMARTHOME</h1>
+                    <div class="location">Griya Melati Mas Blok D3 no 21, Kota Depok</div>
+                </div>
+                <div class="mqtt-status">
+                    <div class="status-indicator" id="mqtt-status-indicator"></div>
+                    <span id="mqtt-status-text">Menghubungkan ke broker MQTT...</span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="dashboard">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Suhu Lingkungan</div>
+                        <div class="card-icon">🌡️</div>
+                    </div>
+                    <div class="sensor-value" id="temperature-value">--</div>
+                    <div class="sensor-unit">°C</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Kelembaban Lingkungan</div>
+                        <div class="card-icon">💧</div>
+                    </div>
+                    <div class="sensor-value" id="humidity-value">--</div>
+                    <div class="sensor-unit">%</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Level Air Torn</div>
+                        <div class="card-icon">🚰</div>
+                    </div>
+                    <div class="sensor-value" id="water-level-value">--</div>
+                    <div class="sensor-unit">cm</div>
+                </div>
+            </section>
+            
+            <section class="controls">
+                <div class="control-card">
+                    <div class="light-icon light-off" id="garage-light-icon">💡</div>
+                    <div class="card-title">Lampu Garasi</div>
+                    <div class="button-group">
+                        <button class="btn btn-on" id="garage-on">ON</button>
+                        <button class="btn btn-off" id="garage-off">OFF</button>
+                    </div>
+                </div>
+                
+                <div class="control-card">
+                    <div class="light-icon light-off" id="front-light-icon">💡</div>
+                    <div class="card-title">Lampu Depan</div>
+                    <div class="button-group">
+                        <button class="btn btn-on" id="front-on">ON</button>
+                        <button class="btn btn-off" id="front-off">OFF</button>
+                    </div>
+                </div>
+                
+                <div class="control-card">
+                    <div class="light-icon light-off" id="terrace-light-icon">💡</div>
+                    <div class="card-title">Lampu Teras Lantai 2</div>
+                    <div class="button-group">
+                        <button class="btn btn-on" id="terrace-on">ON</button>
+                        <button class="btn btn-off" id="terrace-off">OFF</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 MY SMARTHOME - Griya Melati Mas. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
