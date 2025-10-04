@@ -1,37 +1,13 @@
-// MQTT Configuration - FINAL FIXED VERSION
-class MQTTManager {
+// MQTT Proxy Manager
+class MQTTProxyManager {
     constructor() {
-        this.brokerHost = '141.11.160.14';
-        this.websocketPort = 8083;
-        this.mqttClient = null;
+        this.ws = null;
         this.isConnected = false;
         this.reconnectInterval = null;
         this.isUsingSimulatedData = false;
-        this.currentBrokerIndex = 0;
+        this.apiBase = window.location.origin;
         
-        this.brokerUrls = this.generateBrokerUrls();
         this.setupEventListeners();
-    }
-    
-    generateBrokerUrls() {
-        const isHttps = window.location.protocol === 'https:';
-        console.log('🔒 Environment:', isHttps ? 'HTTPS (Production)' : 'HTTP (Development)');
-        
-        if (isHttps) {
-            // Production - hanya gunakan WSS
-            return [
-                `wss://${this.brokerHost}:${this.websocketPort}/mqtt`,
-                `wss://${this.brokerHost}:${this.websocketPort}/ws`,
-                `wss://${this.brokerHost}:${this.websocketPort}`
-            ];
-        } else {
-            // Development - gunakan WS
-            return [
-                `ws://${this.brokerHost}:${this.websocketPort}/mqtt`,
-                `ws://${this.brokerHost}:${this.websocketPort}/ws`,
-                `ws://${this.brokerHost}:${this.websocketPort}`
-            ];
-        }
     }
     
     setupEventListeners() {
@@ -56,125 +32,85 @@ class MQTTManager {
         if (username === 'admin' && encryptedPassword === expectedPassword) {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('main-page').style.display = 'flex';
-            this.initMQTT();
+            this.initWebSocket();
             this.startFallbackSystem();
         } else {
             errorMessage.style.display = 'block';
         }
     }
     
-    initMQTT() {
-        if (this.isConnected) {
-            console.log('Already connected to MQTT broker');
-            return;
+    initWebSocket() {
+        if (this.ws) {
+            this.ws.close();
         }
         
-        if (this.currentBrokerIndex >= this.brokerUrls.length) {
-            this.currentBrokerIndex = 0;
-            console.log('🔄 All broker URLs tried, using fallback mode');
-            this.enableFallbackMode();
-            return;
-        }
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
         
-        const currentBrokerUrl = this.brokerUrls[this.currentBrokerIndex];
-        this.updateConnectionStatus(`Menghubungkan ke broker...`, 'connecting');
-        
-        console.log(`🔌 Attempting MQTT connection: ${currentBrokerUrl}`);
+        console.log('🔌 Connecting to WebSocket:', wsUrl);
+        this.updateConnectionStatus('Menghubungkan ke server...', 'connecting');
         
         try {
-            const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+            this.ws = new WebSocket(wsUrl);
             
-            const options = {
-                clientId: clientId,
-                clean: true,
-                connectTimeout: 10000,
-                reconnectPeriod: 0,
-                keepalive: 60,
-                protocolVersion: 4,
-                rejectUnauthorized: false // Important for self-signed certificates
+            this.ws.onopen = () => {
+                console.log('✅ WebSocket connected');
+                this.isConnected = true;
+                this.isUsingSimulatedData = false;
+                this.updateConnectionStatus('Terhubung ke IoT Network', 'connected');
+                
+                if (this.reconnectInterval) {
+                    clearInterval(this.reconnectInterval);
+                    this.reconnectInterval = null;
+                }
             };
             
-            this.mqttClient = mqtt.connect(currentBrokerUrl, options);
-            this.setupMQTTEvents(currentBrokerUrl);
+            this.ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                } catch (error) {
+                    console.error('❌ WebSocket message parse error:', error);
+                }
+            };
+            
+            this.ws.onclose = () => {
+                console.log('🔌 WebSocket disconnected');
+                this.handleDisconnection();
+            };
+            
+            this.ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+                this.handleDisconnection();
+            };
             
         } catch (error) {
-            console.error('💥 MQTT initialization error:', error);
-            this.handleConnectionFailure();
+            console.error('💥 WebSocket initialization error:', error);
+            this.handleDisconnection();
         }
     }
     
-    setupMQTTEvents(brokerUrl) {
-        this.mqttClient.on('connect', () => {
-            console.log('✅ Connected to MQTT broker:', brokerUrl);
-            this.isConnected = true;
-            this.isUsingSimulatedData = false;
-            this.updateConnectionStatus('Terhubung ke IoT Network', 'connected');
-            this.subscribeToTopics();
-            
-            if (this.reconnectInterval) {
-                clearInterval(this.reconnectInterval);
-                this.reconnectInterval = null;
-            }
-        });
+    handleWebSocketMessage(data) {
+        console.log('📨 WebSocket message:', data);
         
-        this.mqttClient.on('message', (topic, message) => {
-            const value = message.toString();
-            console.log(`📨 MQTT Message: ${topic} = ${value}`);
-            this.processMQTTMessage(topic, value);
-        });
-        
-        this.mqttClient.on('error', (error) => {
-            console.error('❌ MQTT Error:', error);
-            this.handleConnectionFailure();
-        });
-        
-        this.mqttClient.on('close', () => {
-            console.log('🔌 MQTT connection closed');
-            this.handleConnectionFailure();
-        });
-    }
-    
-    handleConnectionFailure() {
-        this.isConnected = false;
-        this.currentBrokerIndex++;
-        
-        if (this.currentBrokerIndex < this.brokerUrls.length) {
-            this.updateConnectionStatus('Mencoba koneksi alternatif...', 'error');
-            setTimeout(() => this.initMQTT(), 3000);
-        } else {
-            this.enableFallbackMode();
+        switch (data.type) {
+            case 'status':
+                this.updateConnectionStatus(
+                    data.connected ? 'Terhubung ke IoT Network' : 'Menghubungkan...',
+                    data.connected ? 'connected' : 'connecting'
+                );
+                break;
+                
+            case 'mqtt_message':
+                this.processMQTTMessage(data.topic, data.message);
+                break;
+                
+            default:
+                console.log('Unknown message type:', data.type);
         }
     }
     
-    enableFallbackMode() {
-        console.log('🎮 Enabling fallback mode - No MQTT connection available');
-        this.isUsingSimulatedData = true;
-        this.updateConnectionStatus('Mode Simulasi (MQTT Tidak Tersedia)', 'error');
-        this.generateSimulatedData();
-    }
-    
-    subscribeToTopics() {
-        const topics = [
-            'rumahIman/smarthome/suhu',
-            'rumahIman/smarthome/kelembaban', 
-            'rumahIman/smarthome/waterLevel',
-            'rumahIman/smarthome/garasi/led',
-            'rumahIman/smarthome/indikasi',
-            'rumahIman/smarthome/lamputeras/led'
-        ];
-        
-        topics.forEach(topic => {
-            this.mqttClient.subscribe(topic, { qos: 0 }, (err) => {
-                if (err) {
-                    console.error('❌ Subscribe error:', topic, err);
-                } else {
-                    console.log('✅ Subscribed to:', topic);
-                }
-            });
-        });
-    }
-    
-    processMQTTMessage(topic, value) {
+    processMQTTMessage(topic, message) {
         const mappings = {
             'rumahIman/smarthome/suhu': { id: 'temperature-value', type: 'sensor' },
             'rumahIman/smarthome/kelembaban': { id: 'humidity-value', type: 'sensor' },
@@ -188,16 +124,81 @@ class MQTTManager {
         if (mapping) {
             if (mapping.type === 'sensor') {
                 const element = document.getElementById(mapping.id);
-                element.textContent = parseFloat(value).toFixed(1);
-                this.animateValue(element);
+                if (element) {
+                    element.textContent = parseFloat(message).toFixed(1);
+                    this.animateValue(element);
+                }
             } else if (mapping.type === 'light') {
-                this.updateLightStatus(mapping.id.replace('-light-icon', ''), value);
+                this.updateLightStatus(mapping.id.replace('-light-icon', ''), message);
             }
+        }
+    }
+    
+    handleDisconnection() {
+        this.isConnected = false;
+        this.updateConnectionStatus('Koneksi terputus', 'error');
+        
+        // Try to reconnect
+        if (!this.reconnectInterval) {
+            this.reconnectInterval = setInterval(() => {
+                console.log('🔄 Attempting WebSocket reconnection...');
+                this.initWebSocket();
+            }, 5000);
+        }
+    }
+    
+    async publish(topic, message) {
+        // Try WebSocket first
+        if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const wsMessage = {
+                type: 'publish',
+                topic: topic,
+                message: message
+            };
+            this.ws.send(JSON.stringify(wsMessage));
+            this.showToast('✅ Perintah terkirim', 'success');
+            return;
+        }
+        
+        // Fallback to HTTP API
+        try {
+            const response = await fetch('/api/mqtt/publish', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ topic, message })
+            });
+            
+            if (response.ok) {
+                console.log('✅ HTTP Publish success:', topic, message);
+                this.showToast('✅ Perintah terkirim', 'success');
+            } else {
+                throw new Error('HTTP publish failed');
+            }
+        } catch (error) {
+            console.error('❌ Publish failed:', error);
+            this.showToast('🎮 Mode Simulasi - Perintah tidak dikirim', 'warning');
+            
+            // Simulate light response
+            this.simulateLightResponse(topic, message);
+        }
+    }
+    
+    simulateLightResponse(topic, message) {
+        if (topic.includes('garasi') && !topic.includes('led')) {
+            setTimeout(() => this.updateLightStatus('garage', message), 500);
+        } else if (topic === 'rumahIman/smarthome') {
+            setTimeout(() => this.updateLightStatus('front', message), 500);
+        } else if (topic.includes('lamputeras') && !topic.includes('led')) {
+            setTimeout(() => this.updateLightStatus('terrace', message), 500);
         }
     }
     
     updateLightStatus(lightType, status) {
         const icon = document.getElementById(`${lightType}-light-icon`);
+        if (!icon) return;
+        
         const isOn = (lightType === 'garage' && status === '1') || 
                      (lightType === 'front' && status === '5') || 
                      (lightType === 'terrace' && status === '1');
@@ -208,32 +209,6 @@ class MQTTManager {
         } else {
             icon.classList.remove('light-on');
             icon.classList.add('light-off');
-        }
-    }
-    
-    publish(topic, message) {
-        if (this.isConnected && this.mqttClient) {
-            this.mqttClient.publish(topic, message, { qos: 0 }, (err) => {
-                if (err) {
-                    console.error('❌ Publish error:', err);
-                    this.showToast('❌ Gagal mengirim perintah', 'error');
-                } else {
-                    console.log('✅ Published:', topic, message);
-                    this.showToast('✅ Perintah terkirim', 'success');
-                }
-            });
-        } else {
-            console.log('🎮 Simulated publish:', topic, message);
-            this.showToast('🎮 Mode Simulasi - Perintah tidak dikirim', 'warning');
-            
-            // Simulate light response
-            if (topic.includes('garasi') && !topic.includes('led')) {
-                setTimeout(() => this.updateLightStatus('garage', message), 500);
-            } else if (topic === 'rumahIman/smarthome') {
-                setTimeout(() => this.updateLightStatus('front', message), 500);
-            } else if (topic.includes('lamputeras') && !topic.includes('led')) {
-                setTimeout(() => this.updateLightStatus('terrace', message), 500);
-            }
         }
     }
     
@@ -248,18 +223,31 @@ class MQTTManager {
         ];
         
         controls.forEach(control => {
-            document.getElementById(control.id).addEventListener('click', () => {
-                this.publish(control.topic, control.payload);
-            });
+            const button = document.getElementById(control.id);
+            if (button) {
+                button.addEventListener('click', () => {
+                    this.publish(control.topic, control.payload);
+                });
+            }
         });
     }
     
     startFallbackSystem() {
+        // Generate initial simulated data
+        setTimeout(() => {
+            if (!this.isConnected) {
+                this.generateSimulatedData();
+            }
+        }, 2000);
+        
+        // Periodic check
         setInterval(() => {
             if (!this.isConnected && !this.isUsingSimulatedData) {
-                this.enableFallbackMode();
+                this.isUsingSimulatedData = true;
+                this.updateConnectionStatus('Mode Simulasi (Server Offline)', 'error');
+                this.generateSimulatedData();
             }
-        }, 15000);
+        }, 10000);
     }
     
     generateSimulatedData() {
@@ -281,15 +269,18 @@ class MQTTManager {
         const indicator = document.getElementById('mqtt-status-indicator');
         const statusText = document.getElementById('mqtt-status-text');
         
-        statusText.textContent = message;
+        if (statusText) {
+            statusText.textContent = message;
+        }
         
-        const statusClasses = {
-            connected: 'online',
-            connecting: 'connecting', 
-            error: 'offline'
-        };
-        
-        indicator.className = `status-indicator ${statusClasses[status] || 'offline'}`;
+        if (indicator) {
+            const statusClasses = {
+                connected: 'online',
+                connecting: 'connecting', 
+                error: 'offline'
+            };
+            indicator.className = `status-indicator ${statusClasses[status] || 'offline'}`;
+        }
     }
     
     animateValue(element) {
@@ -328,17 +319,21 @@ class MQTTManager {
         
         setTimeout(() => {
             toast.style.animation = 'slideOut 0.3s ease-in';
-            setTimeout(() => toast.remove(), 300);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
         }, 3000);
     }
 }
 
-// Initialize MQTT Manager when page loads
+// Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    window.mqttManager = new MQTTManager();
+    window.mqttManager = new MQTTProxyManager();
 });
 
-// Add CSS animations
+// Add CSS animations for toast
 const style = document.createElement('style');
 style.textContent = `
     @keyframes slideIn {
