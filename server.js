@@ -77,22 +77,36 @@ app.get('/api/mqtt/status', (req, res) => {
 app.post('/api/mqtt/publish', (req, res) => {
     const { topic, message } = req.body;
     
-    if (!mqttClient || !mqttClient.connected) {
+    console.log('📤 Received publish request:', { topic, message });
+    
+    if (!mqttClient) {
+        console.error('❌ MQTT client not initialized');
+        return res.status(500).json({ error: 'MQTT client not initialized' });
+    }
+    
+    if (!mqttClient.connected) {
+        console.error('❌ MQTT not connected');
         return res.status(500).json({ error: 'MQTT not connected' });
     }
     
     if (!topic || !message) {
+        console.error('❌ Missing topic or message');
         return res.status(400).json({ error: 'Topic and message required' });
     }
     
-    mqttClient.publish(topic, message, (err) => {
+    mqttClient.publish(topic, message.toString(), { qos: 0 }, (err) => {
         if (err) {
-            console.error('❌ Publish error:', err);
-            return res.status(500).json({ error: 'Publish failed' });
+            console.error('❌ MQTT Publish error:', err);
+            return res.status(500).json({ error: 'Publish failed: ' + err.message });
         }
         
-        console.log('✅ Published:', topic, message);
-        res.json({ success: true, topic, message });
+        console.log('✅ MQTT Published successfully:', topic, message);
+        res.json({ 
+            success: true, 
+            topic, 
+            message,
+            timestamp: new Date().toISOString()
+        });
     });
 });
 
@@ -142,7 +156,7 @@ if (mqttClient) {
             timestamp: new Date().toISOString()
         };
         
-        console.log('📨 MQTT → WebSocket:', topic, message.toString());
+        //console.log('📨 MQTT → WebSocket:', topic, message.toString());
         
         // Broadcast to all connected clients
         clients.forEach(client => {

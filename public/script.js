@@ -148,52 +148,85 @@ class MQTTProxyManager {
     }
     
     async publish(topic, message) {
-        // Try WebSocket first
-        if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
-            const wsMessage = {
-                type: 'publish',
-                topic: topic,
-                message: message
-            };
-            this.ws.send(JSON.stringify(wsMessage));
-            this.showToast('✅ Perintah terkirim', 'success');
+    console.log(`🚀 Attempting to publish: ${topic} = ${message}`);
+    
+    // Show immediate feedback
+    this.showToast('🔄 Mengirim perintah...', 'info');
+    
+    try {
+        // Method 1: Try HTTP API first (more reliable)
+        const response = await fetch('/api/mqtt/publish', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ topic, message })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log('✅ HTTP Publish success:', result);
+            this.showToast('✅ Perintah terkirim via HTTP', 'success');
+            
+            // Simulate LED update
+            this.simulateLightResponse(topic, message);
             return;
+        } else {
+            throw new Error(`HTTP ${response.status}`);
         }
         
-        // Fallback to HTTP API
-        try {
-            const response = await fetch('/api/mqtt/publish', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ topic, message })
-            });
-            
-            if (response.ok) {
-                console.log('✅ HTTP Publish success:', topic, message);
-                this.showToast('✅ Perintah terkirim', 'success');
-            } else {
-                throw new Error('HTTP publish failed');
+    } catch (error) {
+        console.error('❌ HTTP Publish failed:', error);
+        
+        // Method 2: Try WebSocket as fallback
+        if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try {
+                const wsMessage = {
+                    type: 'publish',
+                    topic: topic,
+                    message: message
+                };
+                this.ws.send(JSON.stringify(wsMessage));
+                console.log('✅ WebSocket publish sent:', wsMessage);
+                this.showToast('✅ Perintah terkirim via WebSocket', 'success');
+                
+                // Simulate LED update
+                this.simulateLightResponse(topic, message);
+                return;
+                
+            } catch (wsError) {
+                console.error('❌ WebSocket publish failed:', wsError);
             }
-        } catch (error) {
-            console.error('❌ Publish failed:', error);
-            this.showToast('🎮 Mode Simulasi - Perintah tidak dikirim', 'warning');
-            
-            // Simulate light response
-            this.simulateLightResponse(topic, message);
         }
+        
+        // Method 3: Fallback to simulation
+        console.log('🎮 Using simulation mode');
+        this.showToast('🎮 Mode Simulasi - Perintah lokal', 'warning');
+        this.simulateLightResponse(topic, message);
     }
+}
     
     simulateLightResponse(topic, message) {
-        if (topic.includes('garasi') && !topic.includes('led')) {
-            setTimeout(() => this.updateLightStatus('garage', message), 500);
-        } else if (topic === 'rumahIman/smarthome') {
-            setTimeout(() => this.updateLightStatus('front', message), 500);
-        } else if (topic.includes('lamputeras') && !topic.includes('led')) {
-            setTimeout(() => this.updateLightStatus('terrace', message), 500);
-        }
+    console.log(`💡 Simulating light response: ${topic} = ${message}`);
+    
+    let lightType = '';
+    let status = message;
+    
+    if (topic.includes('garasi') && !topic.includes('led')) {
+        lightType = 'garage';
+    } else if (topic === 'rumahIman/smarthome') {
+        lightType = 'front';
+        // Convert payload to LED format
+        status = message === '5' ? '5' : '6';
+    } else if (topic.includes('lamputeras') && !topic.includes('led')) {
+        lightType = 'terrace';
     }
+    
+    if (lightType) {
+        console.log(`💡 Updating ${lightType} light to: ${status}`);
+        this.updateLightStatus(lightType, status);
+    }
+}
     
     updateLightStatus(lightType, status) {
         const icon = document.getElementById(`${lightType}-light-icon`);
